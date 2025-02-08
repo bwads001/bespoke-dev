@@ -1,0 +1,66 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environment folders
+venv/
+ENV/
+env/
+.venv/
+.env/
+
+# Output directory for generated files
+output/
+
+# IDE and editor settings
+.idea/
+.vscode/
+.cursor/
+.cursorrules
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Log files
+*.log
+
+# Unit test and coverage reports
+htmlcov/
+.tox/
+.nox/
+.cache/
+.pytest_cache/
+.coverage
+coverage.xml
+
+# Type checking caches
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Backup and temporary files
+*.bak
+*.tmp
