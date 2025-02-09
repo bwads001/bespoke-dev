@@ -7,10 +7,10 @@ import asyncio
 import ollama
 from ollama import ChatResponse
 from rich.console import Console
-from ..tools import ToolRegistry
-from .utility import get_summary, estimate_token_count, handle_tool_call
+from ..tools import ToolRegistry, list_directory
+from .utility import estimate_token_count, handle_tool_call
 from .prompts.developer import DEVELOPER_SYSTEM_PROMPT
-
+from .qa_agent import qa_agent
 console = Console()
 
 
@@ -36,30 +36,31 @@ async def developer(
     """
     client = ollama.AsyncClient()    
     
-    # Separate conversation for development
-    development_conversation = conversation.copy()
-
-    # Add the system prompt to the conversation
+    # Initialize the development conversation
+    development_conversation = []
+    development_conversation.append({'role': 'system', 'content': 'Conversation history: ' + json.dumps(conversation)})
     development_conversation.append({'role': 'system', 'content': DEVELOPER_SYSTEM_PROMPT})
 
-
+    # Begin the backlogdevelopment loop
     for i, step in enumerate(backlog, 1):
         console.print(f"[bold cyan]Executing Step {i}/{len(backlog)}:[/bold cyan] {step}")
 
-        development_conversation.append({
-            'role': 'user', 
-            'content': f"Complete this task: {json.dumps(step)}"
-        })
+        # Print the task description
+        development_conversation.append({'role': 'tool', 'content': f"Working directory listing:\n {list_directory('output')}", 'name': 'list_directory'})
+        development_conversation.append({'role': 'user','content': f"Complete this task: {json.dumps(step)}"})
 
         # Print an estimated token count from the conversation
         estimated_tokens = estimate_token_count(development_conversation)
         console.print(f"[orange]Estimated token count: {estimated_tokens} tokens[/orange]")
 
+        # Initialize the retry counter  
         attempt = 0
 
+        # Begin the task development retry loop
         try:
             while attempt < max_retries:
                 try:
+                    # Use tools to complete the step
                     response: ChatResponse = await asyncio.wait_for(
                         client.chat(
                             model="qwen2.5-coder:14b",
@@ -68,6 +69,7 @@ async def developer(
                             options={
                                 'temperature': 0 + (attempt * 0.1),  # Gradually increase temperature
                                 'top_p': 0.1,
+                                'num_ctx': 16384,
                             }
                         ),
                         timeout=60  # Optional: timeout to avoid hanging indefinitely
@@ -81,42 +83,73 @@ async def developer(
                     })
                     continue
 
+                # Print the response and tool calls
                 console.print(f"[dim]Response: {response.message.content}[/dim]")
                 console.print(f"[dim]Tool Calls: {response.message.tool_calls}[/dim]")
-
                 
-                # Add the response to the conversation
+                # Add the response to the conversation if there is one
                 if response.message.content:
-                    development_conversation.append(response.message)
-                    
+                    development_conversation.append(response.message)                    
 
-                # Handle tool calls if any
+                # Check if there are tool calls
                 if response.message.tool_calls:
-
+                    # Handle the tool calls and update the conversation
                     development_conversation = await handle_tool_call(response, development_conversation)
 
-                    # Only break the retry loop if there are tool calls and none of them is a 'read_file' call.
-                    if response.message.tool_calls and not any(tool.function.name == "read_file" for tool in response.message.tool_calls):
-                        break
-                
+
+
+                try:
+                    # Send the response to the model
+                    response: ChatResponse = await asyncio.wait_for(
+                        client.chat(
+                            model="qwen2.5-coder:14b",
+                            messages=development_conversation,
+                            tools=ToolRegistry.get_all_tools(),
+                            options={
+                                'temperature': 0 + (attempt * 0.1),  # Gradually increase temperature
+                                'top_p': 0.1 + (attempt * 0.1),
+                                'top_k': 30 + (attempt * 5),
+                                'num_ctx': 16384,
+                            }
+                        ),
+                        timeout=60  # Optional: timeout to avoid hanging indefinitely
+                    ),
+                except asyncio.TimeoutError:
+                    console.print("[red]Timeout reached waiting for model response. Retrying...[/red]")
+                    attempt += 1
+                    development_conversation.append({
+                        'role': 'system',
+                        'content': 'Timeout occurred. Please try again with a shorter context.'
+                    })
+                    continue
+
+                # Add the response to the conversation if there is one
+                if response.message.content:
+                    development_conversation.append(response.message)  
+
+                # Check if there are tool calls
+                if response.message.tool_calls:
+                    # Handle the tool calls and update the conversation
+                    development_conversation = await handle_tool_call(response, development_conversation)
+
+
+                development_conversation, qa_response = qa_agent(development_conversation, step["task_description"])
+
+
+
+                # Only break the retry loop if the QA response is "pass"
+                if qa_response["pass_qa"]:
+                    break
+
                 # No successful tool calls, prepare for retry
                 attempt += 1
                 if attempt < max_retries:
-                    if response.message.tool_calls:
-                        development_conversation.append({
-                            'role': 'user',
-                            'content': f'File contents have been included in the context. Use what you learned to complete the step or read another file. Step: {step["task_description"]}'
-                        })
-                    else:
-                        development_conversation.append({
-                            'role': 'user',
-                            'content': f'The previous step requires file operations to complete. You must use tools to complete this step. Try to write or read files to complete the step. Step: {step["task_description"]}'
-                        })
-                    console.print(f"[yellow]Attempt {attempt}/{max_retries}: No successful tool usage. Retrying...[/yellow]")
+ 
+                    console.print(f"[yellow]Attempt {attempt}/{max_retries}: QA failed. Retrying...[/yellow]")
                 else:
-                    console.print("[red]Error: Maximum retries reached without successful tool usage[/red]")
-                    console.print("[red]Failed to complete step: No tools were used after maximum retries[/red]")
-                    raise Exception("Maximum retries reached without successful tool usage")
+                    console.print("[red]Error: Maximum retries reached without passing QA[/red]")
+                    development_conversation.append({'role': 'assistant', 'content': f"Unable to complete task: {step['task_description']} failed to pass QA and exceeded the maximum number of retries. This step may require manual completion."})
+                    raise Exception("Maximum retries reached without passing QA")
 
         except Exception as e:
             console.print(f"[red]Error: {str(e)}[/red]")            

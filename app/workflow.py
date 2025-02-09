@@ -50,12 +50,12 @@ async def process_workflow(task: str) -> List[str]:
 
 
         # Get the summary of the development conversation
-        summary = await get_summary(development_conversation)
-        workflow_conversation.append({'role': 'assistant', 'content': summary})
+        development_summary = await get_summary(development_conversation)
+        workflow_conversation.append({'role': 'assistant', 'content': development_summary})
 
 
         
-        return workflow_conversation, summary
+        return workflow_conversation, development_summary
         
     except Exception as e:
         console.print(f"[bold red]Error in workflow:[/bold red] {str(e)}")

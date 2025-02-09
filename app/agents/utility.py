@@ -30,8 +30,10 @@ async def get_summary(messages: List[dict]) -> str:
         options={
             'temperature': 0.6,
             'top_p': 0.8,
+            'num_ctx': 16384,
         }
     )
+
 
     return summary_response.message.content 
 
