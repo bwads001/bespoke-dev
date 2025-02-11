@@ -6,6 +6,7 @@ import typer
 from rich.console import Console
 from .workflow import process_workflow
 from .tools import ToolRegistry
+from rich.markup import escape
 
 app = typer.Typer()
 console = Console()
@@ -34,9 +35,9 @@ def process(user_prompt: str):
         return results
     except Exception as e:
         console.print(f"\n[bold red]Error occurred:[/bold red]")
-        console.print(f"[red]{str(e)}[/red]")
+        console.print(f"[red]{escape(str(e))}[/red]")
         import traceback
-        console.print(f"[dim red]{traceback.format_exc()}[/dim red]")
+        console.print(f"[dim red]{escape(traceback.format_exc())}[/dim red]")
         raise typer.Exit(1)
 
 def main():

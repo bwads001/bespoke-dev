@@ -18,6 +18,12 @@ A two-tier AI development agent powered by Ollama that can analyze, plan, and ex
   - Maintains file content between operations
   - Safe file handling with error recovery
 
+- **Package Management**
+  - Python package management with pip
+  - Node.js package management with npm
+  - Version-constrained dependency installation
+  - Package listing and verification
+
 ## Prerequisites
 
 - Python 3.8+
@@ -94,6 +100,16 @@ asyncio.run(main())
 3. **Create Tests**
    ```bash
    python -m app "Create unit tests for the calculator functions"
+   ```
+
+4. **Install Dependencies**
+   ```bash
+   python -m app "Install and configure FastAPI with Pydantic for request validation"
+   ```
+
+5. **Setup Node.js Project**
+   ```bash
+   python -m app "Create a React frontend for the calculator API"
    ```
 
 ## Output Structure

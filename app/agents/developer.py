@@ -43,15 +43,15 @@ async def developer(
 
     # Begin the backlogdevelopment loop
     for i, step in enumerate(backlog, 1):
-        console.print(f"[bold cyan]Executing Step {i}/{len(backlog)}:[/bold cyan] {step}")
+        console.print(f"[bold cyan]\nImplementing Backlog Step {i}/{len(backlog)}:[/bold cyan] {step}")
 
-        # Print the task description
-        development_conversation.append({'role': 'tool', 'content': f"Working directory listing:\n {list_directory('output')}", 'name': 'list_directory'})
+
+        development_conversation.append({'role': 'system', 'content': f"This is the working directory listing currently:\n {list_directory('./')}"})
         development_conversation.append({'role': 'user','content': f"Complete this task: {json.dumps(step)}"})
 
         # Print an estimated token count from the conversation
         estimated_tokens = estimate_token_count(development_conversation)
-        console.print(f"[orange]Estimated token count: {estimated_tokens} tokens[/orange]")
+        console.print(f"[bold]Estimated token count: {estimated_tokens} tokens[/bold]")
 
         # Initialize the retry counter  
         attempt = 0
@@ -61,18 +61,19 @@ async def developer(
             while attempt < max_retries:
                 try:
                     # Use tools to complete the step
-                    response: ChatResponse = await asyncio.wait_for(
+                    dev1_response: ChatResponse = await asyncio.wait_for(
                         client.chat(
-                            model="qwen2.5-coder:14b",
+                            model="qwen2.5-coder:14b-instruct-q4_K_M",
                             messages=development_conversation,
                             tools=ToolRegistry.get_all_tools(),
                             options={
                                 'temperature': 0 + (attempt * 0.1),  # Gradually increase temperature
                                 'top_p': 0.1,
                                 'num_ctx': 16384,
+                                'num_threads': 16,
                             }
                         ),
-                        timeout=60  # Optional: timeout to avoid hanging indefinitely
+                        timeout=240  # Optional: timeout to avoid hanging indefinitely
                     )
                 except asyncio.TimeoutError:
                     console.print("[red]Timeout reached waiting for model response. Retrying...[/red]")
@@ -84,25 +85,25 @@ async def developer(
                     continue
 
                 # Print the response and tool calls
-                console.print(f"[dim]Response: {response.message.content}[/dim]")
-                console.print(f"[dim]Tool Calls: {response.message.tool_calls}[/dim]")
+                console.print(f"[dim]Response: {dev1_response.message.content}[/dim]")
+                console.print(f"[dim]Tool Calls: {dev1_response.message.tool_calls}[/dim]")
                 
                 # Add the response to the conversation if there is one
-                if response.message.content:
-                    development_conversation.append(response.message)                    
+                if dev1_response.message.content:
+                    development_conversation.append(dev1_response.message)                    
 
                 # Check if there are tool calls
-                if response.message.tool_calls:
+                if dev1_response.message.tool_calls:
                     # Handle the tool calls and update the conversation
-                    development_conversation = await handle_tool_call(response, development_conversation)
+                    development_conversation = await handle_tool_call(dev1_response, development_conversation)
 
 
 
                 try:
                     # Send the response to the model
-                    response: ChatResponse = await asyncio.wait_for(
+                    dev2_response: ChatResponse = await asyncio.wait_for(
                         client.chat(
-                            model="qwen2.5-coder:14b",
+                            model="qwen2.5-coder:14b-instruct-q4_K_M",
                             messages=development_conversation,
                             tools=ToolRegistry.get_all_tools(),
                             options={
@@ -110,10 +111,11 @@ async def developer(
                                 'top_p': 0.1 + (attempt * 0.1),
                                 'top_k': 30 + (attempt * 5),
                                 'num_ctx': 16384,
+                                'num_threads': 16,
                             }
                         ),
-                        timeout=60  # Optional: timeout to avoid hanging indefinitely
-                    ),
+                        timeout=240
+                    )
                 except asyncio.TimeoutError:
                     console.print("[red]Timeout reached waiting for model response. Retrying...[/red]")
                     attempt += 1
@@ -123,22 +125,29 @@ async def developer(
                     })
                     continue
 
+                # Print the response and tool calls
+                console.print(f"[dim]Response: {dev2_response.message.content}[/dim]")
+                console.print(f"[dim]Tool Calls: {dev2_response.message.tool_calls}[/dim]")
+
                 # Add the response to the conversation if there is one
-                if response.message.content:
-                    development_conversation.append(response.message)  
+                if dev2_response.message.content:
+                    development_conversation.append(dev2_response.message)  
 
                 # Check if there are tool calls
-                if response.message.tool_calls:
+                if dev2_response.message.tool_calls:
                     # Handle the tool calls and update the conversation
-                    development_conversation = await handle_tool_call(response, development_conversation)
+                    development_conversation = await handle_tool_call(dev2_response, development_conversation)
 
 
-                development_conversation, qa_response = qa_agent(development_conversation, step["task_description"])
-
+                # Send the response to the QA agent
+                development_conversation, qa_response = await qa_agent(development_conversation, step["task_description"])
+                console.print(f"[dim]QA Response: {qa_response.message.content}[/dim]")
 
 
                 # Only break the retry loop if the QA response is "pass"
                 if qa_response["pass_qa"]:
+                    # Reset the attempt counter
+                    attempt = 0
                     break
 
                 # No successful tool calls, prepare for retry

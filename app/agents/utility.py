@@ -16,10 +16,10 @@ console = Console()
 
 
 async def get_summary(messages: List[dict]) -> str:
-    """Get a summary of changes made in this step."""
+    """Get a summary of changes made"""
     messages.append({
         'role': 'user',
-        'content': 'Summarize what changes were made. Be brief and specific.'
+        'content': 'Review the conversation history and summarize what tasks have been completed and any that failed or need additional work. Be brief and specific.'
     })
 
     client = ollama.AsyncClient()
@@ -56,7 +56,7 @@ def estimate_token_count(messages: List[dict], char_per_token: int = 4) -> int:
     return total_chars // char_per_token
 
 
-def handle_tool_call(response: ChatResponse, development_conversation: List[dict]) -> List[dict]:
+async def handle_tool_call(response: ChatResponse, development_conversation: List[dict]) -> List[dict]:
     """
     Handle a tool call by executing the tool and adding the result to the conversation.
     """
@@ -81,4 +81,3 @@ def handle_tool_call(response: ChatResponse, development_conversation: List[dict
                 development_conversation.append({'role': 'system', 'content': f'The previous tool call failed: {error_msg}. Please try a different approach.'})
 
     return development_conversation
-

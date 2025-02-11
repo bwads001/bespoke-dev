@@ -5,6 +5,8 @@ from typing import Dict, List, Callable, Any
 from functools import wraps
 from pathlib import Path
 from rich.console import Console
+import subprocess
+import os
 
 console = Console()
 
@@ -30,14 +32,20 @@ def normalize_path(path: str) -> Path:
         >>> normalize_path('/absolute/path/file.py')  # Attempts absolute path
         Path('output/file.py')
     """
-    # Convert to Path and resolve any symlinks or '..'
+    # Handle empty path and './' as root directory
+    if path in ('', '.', './'):
+        return OUTPUT_DIR
+    
     clean_path = Path(path)
     
     # Remove any leading slashes or absolute paths
-    parts = [part for part in clean_path.parts if part not in ('/', '\\', '.', '..')]
+    parts = [part for part in clean_path.parts if part not in ('/', '\\', '..')]
+    
+    # Allow single '.' to represent current directory but prevent directory traversal
+    parts = [p for p in parts if p != '.']
     
     if not parts:
-        raise ValueError("Invalid path: must contain a filename or directory name")
+        return OUTPUT_DIR
         
     # Reconstruct path relative to OUTPUT_DIR
     safe_path = OUTPUT_DIR.joinpath(*parts)
@@ -409,4 +417,86 @@ def create_file(path: str, content: str) -> str:
         
         return f"Successfully created file '{path}'."
     except Exception as e:
-        return f"Error: An unexpected error occurred: {str(e)}" 
+        return f"Error: An unexpected error occurred: {str(e)}"
+
+@ToolRegistry.register(
+    name="run_npm",
+    description="Execute any npm/npx command in a controlled environment",
+    input_schema={
+        "command": {
+            "type": "string",
+            "description": "Full npm/npx command to execute (e.g. 'install', 'run build', 'npx create-react-app')"
+        }
+    }
+)
+def run_npm(command: str) -> str:
+    """Execute npm/npx commands safely in the output directory."""
+    blocked_commands = {
+        "start", "dev", "serve", "publish", 
+        "run prod", "deploy", "exec", "restart"
+    }
+    
+    # Block dangerous commands
+    if any(cmd in command.lower() for cmd in blocked_commands):
+        return f"Blocked potentially dangerous command: {command.split()[0]}"
+
+    try:
+        parts = command.split()
+        if not parts or parts[0] not in ["npm", "npx"]:
+            return "Invalid command - must start with npm/npx"
+
+        # Windows executable handling
+        exe_suffix = ".cmd" if os.name == "nt" else ""
+        executable = f"{parts[0]}{exe_suffix}"
+        
+        result = subprocess.run(
+            [executable, *parts[1:]],
+            cwd=OUTPUT_DIR,
+            capture_output=True,
+            text=True,
+            shell=True,
+            timeout=120  # Increased timeout for complex operations
+        )
+        
+        output = f"{parts[0]} output:\n{result.stdout}"
+        if result.stderr:
+            output += f"\n{parts[0]} errors:\n{result.stderr}"
+            
+        return output
+        
+    except Exception as e:
+        return f"{parts[0]} error: {str(e)}"
+
+@ToolRegistry.register(
+    name="run_pip",
+    description="Execute pip commands in project directory. Only allowed: install, freeze",
+    input_schema={
+        "command": {
+            "type": "string",
+            "enum": ["install", "freeze"],
+            "description": "PIP command to execute"
+        },
+        "packages": {
+            "type": "string",
+            "description": "Package specifier(s) to install"
+        }
+    }
+)
+def run_pip(command: str, packages: str = "") -> str:
+    """Safely execute pip commands in isolated output directory"""
+    allowed = {"install", "freeze"}
+    if command not in allowed:
+        return f"Blocked dangerous pip command: {command}"
+    
+    try:
+        args = [command, packages] if command == "install" else [command]
+        result = subprocess.run(
+            ["pip", *args],
+            cwd=OUTPUT_DIR,
+            timeout=120,
+            capture_output=True,
+            text=True
+        )
+        return f"pip {command}:\n{result.stdout}\n{result.stderr}"
+    except Exception as e:
+        return f"pip error: {str(e)}" 

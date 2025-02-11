@@ -6,6 +6,7 @@ from typing import List
 from rich.console import Console
 from .tools import OUTPUT_DIR
 from .agents import developer, analyze_task, get_summary
+from rich.markup import escape
 
 # Configuration
 MAX_STEPS = 25  # Maximum number of steps to execute
@@ -30,7 +31,6 @@ async def process_workflow(task: str) -> List[str]:
 
         backlog_list = validated_backlog.root  # List[Task]
         serialized_backlog = [task.model_dump() for task in backlog_list]
-
         
         console.print("\n[bold green]Generated Plan:[/bold green]")
         for i, step in enumerate(backlog_list, 1):
@@ -48,16 +48,13 @@ async def process_workflow(task: str) -> List[str]:
         for result in development_conversation:
             console.print(f"[bold cyan]Role:[/bold cyan] {result['role']}\n[bold green]Content:[/bold green] [dim]{result['content']}[/dim]")
 
-
         # Get the summary of the development conversation
         development_summary = await get_summary(development_conversation)
         workflow_conversation.append({'role': 'assistant', 'content': development_summary})
-
-
         
         return workflow_conversation, development_summary
         
     except Exception as e:
-        console.print(f"[bold red]Error in workflow:[/bold red] {str(e)}")
+        console.print(f"[bold red]Error in workflow:[/bold red] {escape(str(e))}")
 
         raise 

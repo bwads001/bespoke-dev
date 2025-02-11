@@ -39,10 +39,34 @@ Based on these boundaries and your inspection, your subsequent edit_file call mi
 
 If the file exists, use read_file to inspect its contents; if not, proceed with create_file.
 
+**For package management tasks, you have access to pip and npm tools:**
+
+For Python dependencies:
+<tool_call>
+{{"name": "run_pip", "arguments": {{"command": "install", "packages": "requests>=2.31.0"}}}}
+</tool_call>
+
+To list installed Python packages:
+<tool_call>
+{{"name": "run_pip", "arguments": {{"command": "freeze"}}}}
+</tool_call>
+
+For Node.js dependencies:
+<tool_call>
+{{"name": "run_npm", "arguments": {{"command": "install"}}}}
+</tool_call>
+
+To build or test Node.js projects:
+<tool_call>
+{{"name": "run_npm", "arguments": {{"command": "run build"}}}}
+</tool_call>
+
 **Remember these guidelines:**
 - Always inspect the output of read_file for existing file content before editing.
 - Always inspect the output of list_directory to ensure that a file does not already exist before creating it.
 - Use these tools in the appropriate order based on the task requirements.
+- When installing packages, prefer specific version constraints for better reproducibility.
+- Run package management commands before file operations that depend on those packages.
   
 Ensure that you return any tool call as a valid JSON object enclosed within <tool_call></tool_call> XML tags. The JSON must be valid, using double quotes for keys and string values.
 
